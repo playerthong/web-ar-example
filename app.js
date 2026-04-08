@@ -112,7 +112,7 @@ function getARSceneHTML() {
       renderer="logarithmicDepthBuffer: true; antialias: true; alpha: true;"
       vr-mode-ui="enabled: false"
     >
-      <a-marker preset="hiro" id="ar-marker">
+      <a-marker type="pattern" url="marker.patt" id="ar-marker">
         <!-- Glow platform -->
         <a-cylinder
           color="#1a1a2e"
@@ -148,8 +148,10 @@ function getARSceneHTML() {
 // ===== Start AR =====
 async function startAR() {
   const btn = document.getElementById('btn-start-ar');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="btn-icon">⏳</span> Đang khởi tạo...';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="btn-icon">⏳</span> Đang khởi tạo...';
+  }
 
   try {
     await loadARLibraries();
@@ -166,12 +168,15 @@ async function startAR() {
       setTimeout(() => {
         setupMarkerEvents();
         setupAnimationEndEvents();
-        showToast('📷 Camera đã bật — Hướng vào Hiro Marker');
+        showToast('📷 Camera đã bật — Hướng vào mã QR');
       }, 1000);
     }, 600);
   } catch (e) {
-    btn.disabled = false;
-    btn.innerHTML = '<span class="btn-icon">▶</span> Bắt đầu AR';
+    const btn = document.getElementById('btn-start-ar');
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<span class="btn-icon">▶</span> Bắt đầu AR';
+    }
     showToast('❌ Không thể khởi tạo AR');
   }
 }
@@ -187,8 +192,16 @@ function exitAR() {
   splashScreen.classList.remove('hidden');
 
   const btn = document.getElementById('btn-start-ar');
-  btn.disabled = false;
-  btn.innerHTML = '<span class="btn-icon">▶</span> Bắt đầu AR';
+  if (btn) {
+    btn.style.display = 'flex';
+    btn.disabled = false;
+    btn.innerHTML = '<span class="btn-icon">▶</span> Bắt đầu AR';
+  }
+
+  const loader = document.getElementById('auto-loader');
+  if (loader) {
+    loader.style.display = 'none';
+  }
 
   currentModel = 0;
   animationPaused = false;
@@ -295,7 +308,7 @@ function updateHudStatus(found) {
     hudInstruction.classList.add('found');
   } else {
     hudStatus.innerHTML = '<span class="status-dot"></span> Đang tìm marker...';
-    hudInstruction.textContent = 'Hướng camera vào Hiro Marker để xem 3D';
+    hudInstruction.textContent = 'Hướng camera vào mã QR để xem 3D';
     hudInstruction.classList.remove('found');
   }
 }
@@ -402,4 +415,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   console.log('🚀 Web AR Demo — 3 GLB models ready');
   console.log('Models:', modelConfigs.map(m => m.name).join(', '));
+  
+  // URL Param logic
+  const urlParams = new URLSearchParams(window.location.search);
+  const isAutoScan = urlParams.get('autoscan') === 'true';
+
+  if (isAutoScan) {
+    const btn = document.getElementById('btn-start-ar');
+    const loader = document.getElementById('auto-loader');
+    if (btn) btn.style.display = 'none';
+    if (loader) loader.style.display = 'flex';
+    
+    // Auto-start AR on load
+    startAR();
+  }
 });

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR Test Flyer</title>
+    <style>
+        body { font-family: sans-serif; background: #e0e0e0; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .flyer { background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); max-width: 800px; text-align: center; }
+        h1 { color: #333; margin-top: 0; }
+        .grid { display: flex; gap: 40px; justify-content: center; align-items: center; margin-top: 30px; flex-wrap: wrap; }
+        .item { display: flex; flex-direction: column; align-items: center; }
+        .item-title { font-weight: bold; margin-bottom: 15px; color: #666; font-size: 18px; }
+        .item-desc { font-size: 14px; color: #888; max-width: 250px; margin-top: 15px; line-height: 1.5; }
+        .qr-placeholder { padding: 10px; border: 2px dashed #6C63FF; border-radius: 10px; background: #f9f9ff; }
+        .hiro-img { width: 300px; height: 300px; border: 2px solid #ccc; border-radius: 10px; object-fit: contain; }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+    <div class="flyer">
+        <h1>Tờ rơi thử nghiệm (Cách 1)</h1>
+        <p>Mở trang này trên <b>màn hình máy tính</b>, sau đó lấy điện thoại của bạn ra quét để test.</p>
+        
+        <div class="grid">
+            <!-- Khu vực 1: QR Code -->
+            <div class="item">
+                <div class="item-title">1. Quét mã QR này trước</div>
+                <div class="qr-placeholder" id="qrcode"></div>
+                <div class="item-desc">Mã QR này chứa link:<br><b>https://web-ar-exam.web.app/?autoscan=true</b><br>Khi quét, điện thoại sẽ vào web và tự động bật camera.</div>
+            </div>
+
+            <!-- Khu vực 2: Hiro Marker -->
+            <div class="item">
+                <div class="item-title">2. Rồi chĩa camera sang hướng này</div>
+                <img src="https://raw.githubusercontent.com/AR-js-org/AR.js/master/data/images/hiro.png" alt="Hiro Marker" class="hiro-img">
+                <div class="item-desc">Ngay khi camera Web nhận ra khối đen chữ Hiro này, nhân vật 3D sẽ lòi ra.</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Tạo QR Code mang tham số autoscan=true
+        new QRCode(document.getElementById("qrcode"), {
+            text: "https://web-ar-exam.web.app/?autoscan=true",
+            width: 280,
+            height: 280,
+            colorDark: "#000000",
+            colorLight: "#ffffff",
+            correctLevel: QRCode.CorrectLevel.H
+        });
+    </script>
+</body>
+</html>

@@ -5,6 +5,9 @@
  */
 
 const APP_CONFIG = {
+  // Website URL (Dùng tạo mã QR)
+  APP_URL: 'https://web-ar-exam.web.app?autoscan=true',
+
   // Số vòng loop animation trước khi hiện CTA button (default: 3)
   ANIMATION_LOOP_COUNT: 8,
 

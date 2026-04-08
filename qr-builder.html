@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR QR Code Marker Generator</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; background: #f0f0f0; padding: 20px; }
+        .container { background: white; padding: 30px; border-radius: 12px; max-width: 600px; margin: 0 auto; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        h1 { color: #333; }
+        .preview { margin: 20px 0; padding: 20px; background: #eee; border-radius: 8px; }
+        canvas { max-width: 100%; border: 1px solid #ccc; background: white; }
+        .btn { padding: 12px 24px; font-size: 16px; font-weight: bold; cursor: pointer; color: white; background: #6C63FF; border: none; border-radius: 8px; margin: 10px; text-decoration: none; display: inline-block; }
+        .btn:hover { background: #4834d4; }
+        .instructions { font-size: 14px; color: #555; text-align: left; background: #fff8e1; padding: 15px; border-left: 4px solid #ffc107; margin-bottom: 20px; }
+    </style>
+    <!-- Thư viện tạo QR Code -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>🏗️ Web AR: QR Marker Generator</h1>
+        
+        <div class="instructions">
+            <strong>Hướng dẫn cách dùng "Cách 2":</strong><br>
+            1. Lưu ảnh <b>Marker hình vuông đen</b> bên dưới mang đi in (Standee, tờ rơi...).<br>
+          
+        </div>
+
+        <div id="qrcode" style="display:none;"></div>
+        
+        <div class="preview">
+            <p><strong>Ảnh để mang đi in (Người dùng sẽ quét ảnh này):</strong></p>
+            <canvas id="markerCanvas" width="512" height="512"></canvas>
+        </div>
+
+        <div>
+            <button class="btn" onclick="downloadImage()">⬇️ Tải Ảnh Marker (.PNG)</button>
+            <button class="btn" onclick="downloadPattern()">⬇️ Tải File Nhận Diện (.PATT)</button>
+        </div>
+    </div>
+
+    <!-- Script tạo QR & AR Pattern -->
+    <script src="config.js"></script>
+    <script>
+        const urlToEncode = APP_CONFIG.APP_URL || "https://web-ar-exam.web.app?autoscan=true";
+        let patternStr = "";
+
+        // Tạo thẻ div ẩn để render mạch QR gốc
+        const qrDiv = document.getElementById('qrcode');
+        new QRCode(qrDiv, {
+            text: urlToEncode,
+            width: 256,
+            height: 256,
+            colorDark: "#000000",
+            colorLight: "#ffffff",
+            correctLevel: QRCode.CorrectLevel.H // High correction vì lồng trong AR
+        });
+
+        // Chờ QR gen xong (100ms)
+        setTimeout(() => {
+            const qrCanvas = qrDiv.querySelector('canvas');
+            const mainCanvas = document.getElementById('markerCanvas');
+            const ctx = mainCanvas.getContext('2d');
+
+            // 1. Vẽ nền Outer ĐEN (Border AR chuẩn)
+            ctx.fillStyle = "black";
+            ctx.fillRect(0, 0, 512, 512);
+
+            // 2. Vẽ QR Code ở Tâm (Inner là QR 256x256, nghĩa là viền đen đúng chuẩn tỉ lệ 50% AR Pattern)
+            ctx.drawImage(qrCanvas, 128, 128, 256, 256);
+
+            // 3. Tiến hành encode vùng lõi (Inner) 256x256 thành mã Grayscale 16x16 .patt cho não AR.js
+            patternStr = encodePattern(qrCanvas);
+        }, 500);
+
+        // Core Pattern Encoder algorithm (port từ THREEx.ArPatternFile.js)
+        function encodePattern(innerCanvas) {
+            let patt = "";
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = 16; tempCanvas.height = 16;
+            const tCtx = tempCanvas.getContext('2d');
+
+            // AR.js Pattern đọc 4 góc xoay lặp lại
+            for (let orientation = 0; orientation < 4; orientation++) {
+                tCtx.clearRect(0, 0, 16, 16);
+                tCtx.save();
+                tCtx.translate(8, 8);
+                tCtx.rotate(-Math.PI / 2 * orientation);
+                tCtx.drawImage(innerCanvas, -8, -8, 16, 16);
+                tCtx.restore();
+
+                let imgData = tCtx.getImageData(0, 0, 16, 16).data;
+                // Channel thứ tự: Blue, Green, Red
+                for (let c = 2; c >= 0; c--) {
+                    for (let y = 0; y < 16; y++) {
+                        let row = [];
+                        for (let x = 0; x < 16; x++) {
+                            let idx = (y * 16 + x) * 4;
+                            row.push(imgData[idx + c].toString().padStart(3, ' '));
+                        }
+                        patt += row.join(' ') + '\n';
+                    }
+                }
+                patt += '\n';
+            }
+            return patt;
+        }
+
+        // Tải PNG
+        function downloadImage() {
+            const canvas = document.getElementById('markerCanvas');
+            const link = document.createElement('a');
+            link.download = 'ar-qrcode-marker.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+
+        // Tải PATT
+        function downloadPattern() {
+            if(!patternStr) return alert("Đang load, click lại nhé!");
+            const blob = new Blob([patternStr], { type: 'text/plain' });
+            const link = document.createElement('a');
+            link.download = 'marker.patt';
+            link.href = URL.createObjectURL(blob);
+            link.click();
+        }
+    </script>
+</body>
+</html>
