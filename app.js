@@ -301,9 +301,20 @@ function updateHudStatus(found) {
 }
 
 // ===== Toggle Marker Modal =====
+let qrGenerated = false;
 function toggleMarkerModal() {
   if (markerModal.style.display === 'none' || !markerModal.style.display) {
     markerModal.style.display = 'flex';
+
+    if (!qrGenerated && typeof QRCode !== 'undefined' && typeof APP_CONFIG !== 'undefined' && APP_CONFIG.WEB_URL) {
+      new QRCode(document.getElementById('qr-code-container'), {
+        text: APP_CONFIG.WEB_URL,
+        width: 120,
+        height: 120,
+        correctLevel: QRCode.CorrectLevel.L,
+      });
+      qrGenerated = true;
+    }
   } else {
     markerModal.style.display = 'none';
   }
@@ -402,4 +413,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   console.log('🚀 Web AR Demo — 3 GLB models ready');
   console.log('Models:', modelConfigs.map(m => m.name).join(', '));
+
+  // Auto-start AR if URL param autoscan=true
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('autoscan') === 'true') {
+    startAR();
+  }
 });

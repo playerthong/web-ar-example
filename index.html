@@ -85,7 +85,10 @@
       <div class="marker-image-container">
         <img src="https://raw.githubusercontent.com/AR-js-org/AR.js/master/data/images/hiro.png" alt="Hiro AR Marker" class="marker-image" />
       </div>
-      <p class="marker-tip">💡 Bạn cũng có thể tìm "Hiro marker AR.js" trên Google Images</p>
+      <div style="margin-top: 16px; text-align: center;">
+        <p style="font-size: 0.85rem; color: var(--color-text-muted, #888); margin-bottom: 10px;">📲 Quét QR để mở Web AR trên điện thoại khác:</p>
+        <div id="qr-code-container" style="display: inline-block;"></div>
+      </div>
     </div>
   </div>
 
@@ -150,6 +153,7 @@
   <!-- ===== TOAST ===== -->
   <div id="toast" class="toast"></div>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="config.js"></script>
   <script src="app.js"></script>
 </body>
