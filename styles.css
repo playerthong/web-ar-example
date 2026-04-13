@@ -741,3 +741,97 @@ body {
   }
 }
 
+/* ===== THREE.JS + AR.JS STACKING ===== */
+
+/* AR.js appends <video> to <body> — keep it behind Three.js canvas */
+body > video {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  z-index: 1 !important;
+  object-fit: cover !important;
+}
+
+/* Three.js renderer canvas */
+#ar-scene-container {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+}
+
+#ar-scene-container canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+}
+
+/* ===== AR FALLBACK OVERLAY ===== */
+#ar-fallback {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: rgba(0, 0, 0, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: fadeIn 0.4s ease;
+}
+
+.fallback-card {
+  background: linear-gradient(145deg, #1a1a3e, #0d1b2a);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  border-radius: var(--radius-lg);
+  padding: 36px 28px 28px;
+  max-width: 380px;
+  width: 100%;
+  text-align: center;
+  animation: slideUp 0.4s ease;
+  box-shadow: 0 0 40px rgba(255, 107, 107, 0.15), 0 20px 60px rgba(0, 0, 0, 0.4);
+}
+
+.fallback-icon {
+  font-size: 3rem;
+  margin-bottom: 12px;
+}
+
+.fallback-title {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--color-accent);
+  margin-bottom: 8px;
+}
+
+.fallback-message {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+  margin-bottom: 20px;
+}
+
+.fallback-qr-section {
+  margin: 0 0 20px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.fallback-qr-label {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  margin-bottom: 12px;
+}
+
+#fallback-qr-container {
+  display: inline-block;
+  padding: 8px;
+  background: white;
+  border-radius: var(--radius-sm);
+}
+

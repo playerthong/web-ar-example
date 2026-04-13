@@ -147,6 +147,23 @@
     </div>
   </div>
 
+  <!-- ===== AR FALLBACK (camera fail / AR.js init fail) ===== -->
+  <div id="ar-fallback" style="display:none;">
+    <div class="fallback-card">
+      <div class="fallback-icon">📵</div>
+      <h2 class="fallback-title">AR không khả dụng</h2>
+      <p class="fallback-message" id="fallback-message-text">Camera không thể truy cập hoặc AR.js không khởi tạo được trên thiết bị này.</p>
+      <div class="fallback-qr-section">
+        <p class="fallback-qr-label">📲 Quét QR để mở trên thiết bị khác:</p>
+        <div id="fallback-qr-container"></div>
+      </div>
+      <button class="btn-primary" onclick="retryAR()" style="width:100%;margin-bottom:10px;">
+        <span class="btn-icon">↺</span> Thử lại
+      </button>
+      <button class="btn-secondary" onclick="exitAR()" style="width:100%;">Quay lại</button>
+    </div>
+  </div>
+
   <!-- ===== SCREENSHOT FLASH ===== -->
   <div id="screenshot-flash"></div>
 

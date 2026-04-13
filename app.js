@@ -1,148 +1,246 @@
 /**
- * Web AR Demo — Application Logic
- * Loads animated GLB 3D models on AR markers.
- * A-Frame + AR.js + aframe-extras are loaded dynamically.
+ * Web AR — Three.js (core) + AR.js (tracking)
+ * Zero build tools, pure CDN delivery.
  */
 
-// ===== State =====
-let currentModel = 0;
-const totalModels = 3;
+// ===== Model Configs =====
 const modelConfigs = [
-  {
-    name: '🦊 Fox (chạy)',
-    src: 'models/fox.glb',
-    scale: '0.02 0.02 0.02',
-    position: '0 0 0',
-    rotation: '0 0 0',
-    animated: true,
-    animClip: '*',  // play all animations
-  },
-  {
-    name: '🚶 CesiumMan (đi bộ)',
-    src: 'models/cesiumman.glb',
-    scale: '0.5 0.5 0.5',
-    position: '0 0 0',
-    rotation: '0 0 0',
-    animated: true,
-    animClip: '*',
-  },
-  {
-    name: '🧠 BrainStem (robot)',
-    src: 'models/brainstem.glb',
-    scale: '0.3 0.3 0.3',
-    position: '0 0 0',
-    rotation: '0 0 0',
-    animated: true,
-    animClip: '*',
-  },
+  { name: '🦊 Fox (chạy)',        src: 'models/fox.glb',       scale: 0.02, animated: true  },
+  { name: '🚶 CesiumMan (đi bộ)', src: 'models/cesiumman.glb', scale: 0.5,  animated: true  },
+  { name: '🧠 BrainStem (robot)', src: 'models/brainstem.glb', scale: 0.3,  animated: true  },
 ];
 
+// ===== State =====
+let currentModel    = 0;
 let animationPaused = false;
-let markerFound = false;
-let toastTimer = null;
-let scriptsLoaded = false;
-let ctaShown = false;
-let loopCount = 0;
+let markerFound     = false;
+let ctaShown        = false;
+let loopCount       = 0;
+let toastTimer      = null;
+let scriptsLoaded   = false;
+let rafId           = null;
+let prevMarkerState = false;
+let fallbackQrDone  = false;
+let qrGenerated     = false;
 
-// Read config (from config.js, loaded before app.js)
+// Three.js handles
+let renderer, scene, camera, clock;
+let arSource, arContext;
+let markerRoot, torusRing;
+let loadedModels = [];  // [{ mesh: Object3D, mixer: AnimationMixer|null }]
+
 const LOOP_TARGET = (typeof APP_CONFIG !== 'undefined' && APP_CONFIG.ANIMATION_LOOP_COUNT) || 3;
 
-// ===== DOM References =====
-const splashScreen = document.getElementById('splash-screen');
-const markerModal = document.getElementById('marker-modal');
-const arHud = document.getElementById('ar-hud');
-const arSceneContainer = document.getElementById('ar-scene-container');
-const hudStatus = document.getElementById('hud-status');
+// ===== DOM =====
+const splashScreen   = document.getElementById('splash-screen');
+const arHud          = document.getElementById('ar-hud');
+const arContainer    = document.getElementById('ar-scene-container');
+const hudStatus      = document.getElementById('hud-status');
 const hudInstruction = document.getElementById('hud-instruction');
-const screenshotFlash = document.getElementById('screenshot-flash');
-const toastEl = document.getElementById('toast');
+const screenshotFlash= document.getElementById('screenshot-flash');
+const toastEl        = document.getElementById('toast');
+const markerModal    = document.getElementById('marker-modal');
 
-// ===== Load Scripts Dynamically =====
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = src;
-    script.onload = resolve;
-    script.onerror = reject;
-    document.head.appendChild(script);
-  });
-}
+// ===== Script Loader =====
+const loadScript = src => new Promise((resolve, reject) => {
+  const s = document.createElement('script');
+  s.src = src; s.onload = resolve; s.onerror = reject;
+  document.head.appendChild(s);
+});
 
 async function loadARLibraries() {
   if (scriptsLoaded) return;
   showToast('⏳ Đang tải thư viện AR...');
-  try {
-    await loadScript('https://aframe.io/releases/1.4.2/aframe.min.js');
-    // aframe-extras for animation-mixer (plays GLB skeletal animations)
-    await loadScript('https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.2.0/dist/aframe-extras.min.js');
-    await loadScript('https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js');
-    scriptsLoaded = true;
-    console.log('✅ A-Frame + AR.js + aframe-extras loaded');
-  } catch (e) {
-    showToast('❌ Lỗi tải thư viện AR');
-    console.error('Failed to load AR libraries:', e);
-    throw e;
+  // three@0.128.0: last version with examples/js/ global scripts
+  // AR.js 3.3.3: compatible with three@0.128.0
+  await loadScript('https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js');
+  await loadScript('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js');
+  await loadScript('https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.3.3/three.js/build/ar.js');
+
+  // AR.js 3.3.3 uses Object.assign() to mixin THREE.EventDispatcher onto its classes.
+  // three@0.128.0 defines EventDispatcher as an ES6 class → prototype methods are
+  // non-enumerable → Object.assign() silently skips them → dispatchEvent is missing.
+  // Fix: copy methods directly from the prototype onto every affected AR.js class.
+  const edMethods = ['addEventListener', 'removeEventListener', 'hasEventListener', 'dispatchEvent'];
+  [THREEx.ArBaseControls, THREEx.ArToolkitContext, THREEx.ArToolkitSource].forEach(cls => {
+    if (!cls) return;
+    edMethods.forEach(m => {
+      if (typeof cls.prototype[m] !== 'function') {
+        cls.prototype[m] = THREE.EventDispatcher.prototype[m];
+      }
+    });
+  });
+
+  scriptsLoaded = true;
+}
+
+// ===== Three.js Init =====
+function initThree() {
+  scene  = new THREE.Scene();
+  camera = new THREE.Camera();
+  clock  = new THREE.Clock();
+
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+  renderer.setClearColor(0x000000, 0);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(window.devicePixelRatio);
+  arContainer.appendChild(renderer.domElement);
+
+  // Lights (added to scene, not markerRoot, so they always illuminate)
+  scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+  const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+  dir.position.set(1, 2, 1);
+  scene.add(dir);
+
+  // Marker root — AR.js will update this group's world matrix
+  markerRoot = new THREE.Group();
+  scene.add(markerRoot);
+
+  // Purple point light follows marker
+  const pt = new THREE.PointLight(0x6C63FF, 0.4, 3);
+  pt.position.set(0, 1.5, 0);
+  markerRoot.add(pt);
+
+  // DEBUG: bright red sphere — nếu cái này hiện = rendering OK, lỗi là GLTF
+  const debugSphere = new THREE.Mesh(
+    new THREE.SphereGeometry(0.3, 16, 16),
+    new THREE.MeshBasicMaterial({ color: 0xff0000 })
+  );
+  debugSphere.position.y = 0.3;
+  markerRoot.add(debugSphere);
+
+  // Platform
+  const platGeo = new THREE.CylinderGeometry(0.5, 0.5, 0.03, 32);
+  const platMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e, metalness: 0.8, roughness: 0.2 });
+  markerRoot.add(new THREE.Mesh(platGeo, platMat));
+
+  // Torus ring (animated in render loop)
+  const torusGeo = new THREE.TorusGeometry(0.48, 0.01, 16, 100);
+  const torusMat = new THREE.MeshStandardMaterial({ color: 0x6C63FF, emissive: 0x6C63FF, emissiveIntensity: 0.6, transparent: true, opacity: 0.7 });
+  torusRing = new THREE.Mesh(torusGeo, torusMat);
+  torusRing.rotation.x = Math.PI / 2;
+  torusRing.position.y = 0.02;
+  markerRoot.add(torusRing);
+}
+
+// ===== AR.js Init =====
+function initARjs() {
+  return new Promise((resolve, reject) => {
+    arSource = new THREEx.ArToolkitSource({ sourceType: 'webcam' });
+
+    arSource.init(
+      () => { onARSourceReady(); resolve(); },
+      err  => { showARFallback('Camera không thể truy cập: ' + (err?.message || err)); reject(err); }
+    );
+
+    arContext = new THREEx.ArToolkitContext({
+      cameraParametersUrl: 'https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.3.3/data/data/camera_para.dat',
+      detectionMode: 'mono',
+    });
+
+    arContext.init(() => {
+      camera.projectionMatrix.copy(arContext.getProjectionMatrix());
+    });
+
+    new THREEx.ArMarkerControls(arContext, markerRoot, {
+      type       : 'pattern',
+      patternUrl : 'https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.3.3/data/data/patt.hiro',
+    });
+  });
+}
+
+function onARSourceReady() {
+  arSource.onResizeElement();
+  arSource.copyElementSizeTo(renderer.domElement);
+  if (arContext.arController) {
+    arSource.copyElementSizeTo(arContext.arController.canvas);
+  }
+  window.addEventListener('resize', onWindowResize);
+}
+
+function onWindowResize() {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  arSource.onResizeElement();
+  arSource.copyElementSizeTo(renderer.domElement);
+  if (arContext.arController) {
+    arSource.copyElementSizeTo(arContext.arController.canvas);
   }
 }
 
-// ===== Build AR Scene =====
-function getARSceneHTML() {
-  const modelsHTML = modelConfigs.map((m, i) => {
-    // animation-mixer: loop repeat, we count loops via 'animation-loop' event
-    const mixerAttr = m.animated ? `animation-mixer="clip: ${m.animClip}; loop: repeat"` : '';
+// ===== Load Models =====
+async function loadModels() {
+  showToast('⏳ Đang tải models...');
+  const loader = new THREE.GLTFLoader();
 
-    return `
-    <a-entity
-      id="model-${i}"
-      gltf-model="url(${m.src})"
-      scale="${m.scale}"
-      position="${m.position}"
-      rotation="${m.rotation}"
-      visible="${i === 0 ? 'true' : 'false'}"
-      ${mixerAttr}
-    ></a-entity>
-  `;
-  }).join('\n');
+  const tasks = modelConfigs.map((cfg, i) => new Promise(resolve => {
+    loader.load(cfg.src, gltf => {
+      console.log(`✅ Loaded: ${cfg.src}`, gltf);
+      const mesh = gltf.scene;
+      mesh.scale.setScalar(cfg.scale);
+      mesh.visible = (i === 0);
+      markerRoot.add(mesh);
 
-  return `
-    <a-scene
-      id="ar-scene"
-      embedded
-      arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;"
-      renderer="logarithmicDepthBuffer: true; antialias: true; alpha: true;"
-      vr-mode-ui="enabled: false"
-    >
-      <a-marker preset="hiro" id="ar-marker">
-        <!-- Glow platform -->
-        <a-cylinder
-          color="#1a1a2e"
-          radius="0.5"
-          height="0.03"
-          position="0 0 0"
-          material="metalness: 0.8; roughness: 0.2; color: #1a1a2e"
-        ></a-cylinder>
-        <a-torus
-          color="#6C63FF"
-          radius="0.48"
-          radius-tubular="0.01"
-          position="0 0.02 0"
-          rotation="90 0 0"
-          material="emissive: #6C63FF; emissiveIntensity: 0.6; opacity: 0.7"
-          animation="property: rotation; to: 90 360 0; dur: 4000; easing: linear; loop: true"
-        ></a-torus>
+      let mixer = null;
+      if (cfg.animated && gltf.animations.length > 0) {
+        mixer = new THREE.AnimationMixer(mesh);
+        gltf.animations.forEach(clip => {
+          mixer.clipAction(clip).setLoop(THREE.LoopRepeat, Infinity).play();
+        });
+        const firstClipName = gltf.animations[0].name;
+        mixer.addEventListener('loop', e => {
+          if (e.action.getClip().name !== firstClipName) return;
+          onAnimationLoop(i);
+        });
+      }
 
-        <!-- GLB Animated Models -->
-        ${modelsHTML}
+      loadedModels[i] = { mesh, mixer };
+      if (i === 0) showToast('✅ Model fox loaded');
+      resolve();
+    }, xhr => {
+      if (xhr.lengthComputable) {
+        const pct = Math.round(xhr.loaded / xhr.total * 100);
+        console.log(`📦 ${cfg.name}: ${pct}%`);
+      }
+    }, err => {
+      console.error(`❌ Failed: ${cfg.src}`, err);
+      showToast(`❌ Lỗi load: ${cfg.name}`);
+      loadedModels[i] = null;
+      resolve();
+    });
+  }));
 
-        <!-- Lighting -->
-        <a-light type="ambient" color="#ffffff" intensity="0.7"></a-light>
-        <a-light type="directional" color="#ffffff" intensity="0.9" position="1 2 1"></a-light>
-        <a-light type="point" color="#6C63FF" intensity="0.4" distance="3" position="0 1.5 0"></a-light>
-      </a-marker>
+  await Promise.all(tasks);
+  showToast('📷 Camera đã bật — Hướng vào Hiro Marker');
+}
 
-      <a-entity camera></a-entity>
-    </a-scene>
-  `;
+// ===== Render Loop =====
+function startRenderLoop() {
+  const tick = () => {
+    rafId = requestAnimationFrame(tick);
+    if (!arSource.ready) return;
+
+    arContext.update(arSource.domElement);
+
+    // Detect marker state change
+    const visible = markerRoot.visible;
+    if (visible !== prevMarkerState) {
+      visible ? onMarkerFound() : onMarkerLost();
+      prevMarkerState = visible;
+    }
+
+    // getDelta() called exactly once per frame
+    const delta = clock.getDelta();
+
+    if (!animationPaused) {
+      // Animate torus ring (~1 rotation per 4s)
+      if (torusRing) torusRing.rotation.z += delta * (Math.PI / 2);
+      // Update animation mixers
+      loadedModels.forEach(m => m?.mixer?.update(delta));
+    }
+
+    renderer.render(scene, camera);
+  };
+  tick();
 }
 
 // ===== Start AR =====
@@ -155,139 +253,185 @@ async function startAR() {
     await loadARLibraries();
 
     splashScreen.classList.add('hidden');
-
-    setTimeout(() => {
+    setTimeout(async () => {
       splashScreen.style.display = 'none';
-
-      arSceneContainer.innerHTML = getARSceneHTML();
-      arSceneContainer.style.display = 'block';
+      arContainer.style.display = 'block';
       arHud.style.display = 'flex';
 
-      setTimeout(() => {
-        setupMarkerEvents();
-        setupAnimationEndEvents();
-        showToast('📷 Camera đã bật — Hướng vào Hiro Marker');
-      }, 1000);
+      initThree();
+
+      try {
+        await initARjs();
+        await loadModels();
+        startRenderLoop();
+      } catch {
+        // showARFallback already called inside initARjs
+      }
     }, 600);
   } catch (e) {
     btn.disabled = false;
     btn.innerHTML = '<span class="btn-icon">▶</span> Bắt đầu AR';
-    showToast('❌ Không thể khởi tạo AR');
+    showARFallback('Lỗi tải thư viện AR: ' + (e?.message || e));
   }
 }
 
 // ===== Exit AR =====
 function exitAR() {
-  arSceneContainer.innerHTML = '';
-  arSceneContainer.style.display = 'none';
+  // Stop render loop
+  if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+  window.removeEventListener('resize', onWindowResize);
+
+  // Stop camera stream
+  if (arSource?.domElement?.srcObject) {
+    arSource.domElement.srcObject.getTracks().forEach(t => t.stop());
+  }
+  arSource?.domElement?.remove();
+
+  // Dispose animation mixers
+  loadedModels.forEach(m => m?.mixer?.stopAllAction());
+
+  // Dispose Three.js resources
+  if (scene) {
+    scene.traverse(obj => {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        [].concat(obj.material).forEach(mat => {
+          Object.values(mat).forEach(v => v?.isTexture && v.dispose());
+          mat.dispose();
+        });
+      }
+    });
+  }
+  if (renderer) { renderer.dispose(); renderer.domElement.remove(); }
+
+  // Reset refs
+  renderer = scene = camera = clock = null;
+  arSource = arContext = null;
+  markerRoot = torusRing = null;
+  loadedModels = [];
+
+  // Reset state
+  currentModel = 0; animationPaused = false;
+  markerFound  = false; ctaShown = false; loopCount = 0;
+  prevMarkerState = false;
+
+  // Reset UI
+  arContainer.style.display = 'none';
   arHud.style.display = 'none';
+  document.getElementById('ar-fallback').style.display = 'none';
+  document.getElementById('cta-overlay').style.display = 'none';
 
   splashScreen.style.display = 'flex';
-  splashScreen.offsetHeight;
+  splashScreen.offsetHeight; // force reflow
   splashScreen.classList.remove('hidden');
 
   const btn = document.getElementById('btn-start-ar');
   btn.disabled = false;
   btn.innerHTML = '<span class="btn-icon">▶</span> Bắt đầu AR';
+}
 
-  currentModel = 0;
-  animationPaused = false;
-  markerFound = false;
-  ctaShown = false;
-  loopCount = 0;
+// ===== AR Fallback =====
+function showARFallback(reason) {
+  const el = document.getElementById('ar-fallback');
+  if (!el) return;
 
-  // Hide CTA if visible
-  const ctaOverlay = document.getElementById('cta-overlay');
-  if (ctaOverlay) ctaOverlay.style.display = 'none';
+  const msgEl = document.getElementById('fallback-message-text');
+  if (msgEl && reason) msgEl.textContent = reason;
+
+  el.style.display = 'flex';
+  arHud.style.display = 'none';
+
+  if (!fallbackQrDone && typeof QRCode !== 'undefined' && typeof APP_CONFIG !== 'undefined' && APP_CONFIG.WEB_URL) {
+    new QRCode(document.getElementById('fallback-qr-container'), {
+      text: APP_CONFIG.WEB_URL, width: 140, height: 140,
+      correctLevel: QRCode.CorrectLevel.L,
+    });
+    fallbackQrDone = true;
+  }
+}
+
+function retryAR() {
+  document.getElementById('ar-fallback').style.display = 'none';
+  // Reset partial init state before retry
+  if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+  if (arSource?.domElement?.srcObject) {
+    arSource.domElement.srcObject.getTracks().forEach(t => t.stop());
+  }
+  arSource?.domElement?.remove();
+  if (renderer) { renderer.dispose(); renderer.domElement.remove(); }
+  loadedModels = [];
+  renderer = scene = camera = clock = arSource = arContext = markerRoot = torusRing = null;
+  prevMarkerState = false;
+
+  arHud.style.display = 'flex';
+  initThree();
+  initARjs().then(() => { loadModels(); startRenderLoop(); }).catch(() => {});
 }
 
 // ===== Marker Events =====
-function setupMarkerEvents() {
-  const marker = document.getElementById('ar-marker');
-  if (!marker) return;
+function onMarkerFound() {
+  markerFound = true; loopCount = 0; ctaShown = false;
+  updateHudStatus(true);
+  showToast('✨ Marker detected — ' + modelConfigs[currentModel].name);
+  document.getElementById('cta-overlay').style.display = 'none';
+}
 
-  marker.addEventListener('markerFound', () => {
-    markerFound = true;
-    updateHudStatus(true);
-    showToast('✨ Marker detected — ' + modelConfigs[currentModel].name);
-
-    // Reset loop count AND hide CTA when marker is detected again
-    loopCount = 0;
-    ctaShown = false;
-    const ctaOverlay = document.getElementById('cta-overlay');
-    if (ctaOverlay) ctaOverlay.style.display = 'none';
-  });
-
-  marker.addEventListener('markerLost', () => {
-    markerFound = false;
-    updateHudStatus(false);
-  });
+function onMarkerLost() {
+  markerFound = false;
+  updateHudStatus(false);
 }
 
 // ===== Animation Loop Counter =====
-function setupAnimationEndEvents() {
-  for (let i = 0; i < totalModels; i++) {
-    const modelEl = document.getElementById('model-' + i);
-    if (!modelEl) continue;
-
-    // 'animation-loop' fires each time a loop cycle completes
-    modelEl.addEventListener('animation-loop', () => {
-      // Only count for the currently visible model
-      if (i !== currentModel || ctaShown) return;
-
-      loopCount++;
-      const remaining = LOOP_TARGET - loopCount;
-      console.log(`🔄 Loop ${loopCount}/${LOOP_TARGET} on model-${i}`);
-
-      if (remaining > 0) {
-        showToast(`🔄 Vòng ${loopCount}/${LOOP_TARGET}`);
-      } else {
-        // Reached target loops → show CTA
-        showToast('🎬 Animation hoàn tất!');
-        setTimeout(() => showCTA(), 1200);
-      }
-    });
+function onAnimationLoop(modelIndex) {
+  if (modelIndex !== currentModel || ctaShown || !markerFound) return;
+  loopCount++;
+  if (loopCount < LOOP_TARGET) {
+    showToast(`🔄 Vòng ${loopCount}/${LOOP_TARGET}`);
+  } else {
+    showToast('🎬 Animation hoàn tất!');
+    setTimeout(showCTA, 1200);
   }
 }
 
-// ===== Show CTA =====
-function showCTA() {
-  if (ctaShown) return;
-  ctaShown = true;
+// ===== Change Model =====
+function changeModel() {
+  if (loadedModels[currentModel]?.mesh) loadedModels[currentModel].mesh.visible = false;
+  currentModel = (currentModel + 1) % modelConfigs.length;
+  if (loadedModels[currentModel]?.mesh) loadedModels[currentModel].mesh.visible = true;
 
-  // Populate CTA content from config
-  if (typeof APP_CONFIG !== 'undefined') {
-    const titleEl = document.getElementById('cta-title-text');
-    const msgEl = document.getElementById('cta-message-text');
-    const btnEl = document.getElementById('cta-button');
-    const btnTextEl = document.getElementById('cta-button-text');
-
-    if (titleEl && APP_CONFIG.CTA_TITLE) {
-      titleEl.innerHTML = APP_CONFIG.CTA_TITLE.replace(
-        /(đặc biệt|special|khuyến mãi)/gi,
-        '<span class="gradient-text">$1</span>'
-      );
-    }
-    if (msgEl && APP_CONFIG.CTA_MESSAGE) msgEl.textContent = APP_CONFIG.CTA_MESSAGE;
-    if (btnEl && APP_CONFIG.CTA_LINK) btnEl.href = APP_CONFIG.CTA_LINK;
-    if (btnTextEl && APP_CONFIG.CTA_BUTTON_TEXT) btnTextEl.textContent = APP_CONFIG.CTA_BUTTON_TEXT;
-  }
-
-  const ctaOverlay = document.getElementById('cta-overlay');
-  if (ctaOverlay) {
-    ctaOverlay.style.display = 'flex';
-  }
+  loopCount = 0; ctaShown = false;
+  document.getElementById('cta-overlay').style.display = 'none';
+  showToast('Model: ' + modelConfigs[currentModel].name);
+  if (markerFound) hudInstruction.textContent = 'Đang hiển thị: ' + modelConfigs[currentModel].name;
 }
 
-// ===== Dismiss CTA =====
-function dismissCTA() {
-  const ctaOverlay = document.getElementById('cta-overlay');
-  if (ctaOverlay) {
-    ctaOverlay.style.display = 'none';
-  }
+// ===== Toggle Animation =====
+function toggleAnimation() {
+  animationPaused = !animationPaused;
+  // timeScale=0 freezes without breaking mixer state
+  loadedModels.forEach(m => {
+    if (m?.mixer) m.mixer.timeScale = animationPaused ? 0 : 1;
+  });
+  showToast(animationPaused ? '⏸ Animation tạm dừng' : '▶ Animation đã bật');
 }
 
-// ===== Update HUD =====
+// ===== Screenshot =====
+function takeScreenshot() {
+  screenshotFlash.classList.add('flash');
+  setTimeout(() => screenshotFlash.classList.remove('flash'), 200);
+  setTimeout(() => {
+    try {
+      renderer.render(scene, camera); // ensure latest frame in buffer
+      const link = document.createElement('a');
+      link.download = 'ar-' + Date.now() + '.png';
+      link.href = renderer.domElement.toDataURL('image/png');
+      link.click();
+      showToast('📸 Đã lưu ảnh!');
+    } catch { showToast('⚠️ Không thể chụp — camera bảo mật'); }
+  }, 300);
+}
+
+// ===== HUD =====
 function updateHudStatus(found) {
   if (found) {
     hudStatus.innerHTML = '<span class="status-dot active"></span> Marker detected!';
@@ -300,123 +444,60 @@ function updateHudStatus(found) {
   }
 }
 
-// ===== Toggle Marker Modal =====
-let qrGenerated = false;
+// ===== Marker Modal =====
 function toggleMarkerModal() {
-  if (markerModal.style.display === 'none' || !markerModal.style.display) {
-    markerModal.style.display = 'flex';
-
-    if (!qrGenerated && typeof QRCode !== 'undefined' && typeof APP_CONFIG !== 'undefined' && APP_CONFIG.WEB_URL) {
-      new QRCode(document.getElementById('qr-code-container'), {
-        text: APP_CONFIG.WEB_URL,
-        width: 120,
-        height: 120,
-        correctLevel: QRCode.CorrectLevel.L,
-      });
-      qrGenerated = true;
-    }
-  } else {
-    markerModal.style.display = 'none';
-  }
-}
-
-// ===== Change Model =====
-function changeModel() {
-  const current = document.getElementById('model-' + currentModel);
-  if (current) current.setAttribute('visible', 'false');
-
-  currentModel = (currentModel + 1) % totalModels;
-
-  const next = document.getElementById('model-' + currentModel);
-  if (next) next.setAttribute('visible', 'true');
-
-  // Reset loop counter for new model
-  loopCount = 0;
-  ctaShown = false;
-
-  // Hide CTA if visible
-  const ctaOverlay = document.getElementById('cta-overlay');
-  if (ctaOverlay) ctaOverlay.style.display = 'none';
-
-  showToast('Model: ' + modelConfigs[currentModel].name);
-
-  if (markerFound) {
-    hudInstruction.textContent = 'Đang hiển thị: ' + modelConfigs[currentModel].name;
-  }
-}
-
-// ===== Toggle Animation =====
-function toggleAnimation() {
-  animationPaused = !animationPaused;
-
-  const scene = document.getElementById('ar-scene');
-  if (!scene) return;
-
-  const animatedEls = scene.querySelectorAll('[animation], [animation__float], [animation__pulse]');
-  animatedEls.forEach(el => {
-    ['animation', 'animation__float', 'animation__pulse'].forEach(attr => {
-      if (el.hasAttribute(attr)) {
-        el.setAttribute(attr, 'enabled', !animationPaused);
-      }
+  const isHidden = markerModal.style.display === 'none' || !markerModal.style.display;
+  markerModal.style.display = isHidden ? 'flex' : 'none';
+  if (isHidden && !qrGenerated && typeof QRCode !== 'undefined' && typeof APP_CONFIG !== 'undefined' && APP_CONFIG.WEB_URL) {
+    new QRCode(document.getElementById('qr-code-container'), {
+      text: APP_CONFIG.WEB_URL, width: 120, height: 120,
+      correctLevel: QRCode.CorrectLevel.L,
     });
-  });
-
-  showToast(animationPaused ? '⏸ Animation tạm dừng' : '▶ Animation đã bật');
+    qrGenerated = true;
+  }
 }
 
-// ===== Take Screenshot =====
-function takeScreenshot() {
-  const scene = document.getElementById('ar-scene');
-  if (!scene) return;
+// ===== CTA =====
+function showCTA() {
+  if (ctaShown) return;
+  ctaShown = true;
+  if (typeof APP_CONFIG !== 'undefined') {
+    const t  = document.getElementById('cta-title-text');
+    const m  = document.getElementById('cta-message-text');
+    const b  = document.getElementById('cta-button');
+    const bt = document.getElementById('cta-button-text');
+    if (t && APP_CONFIG.CTA_TITLE) t.innerHTML = APP_CONFIG.CTA_TITLE.replace(
+      /(đặc biệt|special|khuyến mãi)/gi, '<span class="gradient-text">$1</span>'
+    );
+    if (m  && APP_CONFIG.CTA_MESSAGE)     m.textContent  = APP_CONFIG.CTA_MESSAGE;
+    if (b  && APP_CONFIG.CTA_LINK)        b.href         = APP_CONFIG.CTA_LINK;
+    if (bt && APP_CONFIG.CTA_BUTTON_TEXT) bt.textContent = APP_CONFIG.CTA_BUTTON_TEXT;
+  }
+  document.getElementById('cta-overlay').style.display = 'flex';
+}
 
-  screenshotFlash.classList.add('flash');
-  setTimeout(() => screenshotFlash.classList.remove('flash'), 200);
-
-  setTimeout(() => {
-    const canvas = scene.canvas;
-    if (canvas) {
-      try {
-        const link = document.createElement('a');
-        link.download = 'ar-screenshot-' + Date.now() + '.png';
-        link.href = canvas.toDataURL('image/png');
-        link.click();
-        showToast('📸 Đã lưu ảnh!');
-      } catch (e) {
-        showToast('⚠️ Không thể chụp — camera bảo mật');
-      }
-    }
-  }, 300);
+function dismissCTA() {
+  document.getElementById('cta-overlay').style.display = 'none';
 }
 
 // ===== Toast =====
-function showToast(message) {
-  toastEl.textContent = message;
+function showToast(msg) {
+  toastEl.textContent = msg;
   toastEl.classList.add('show');
-
   if (toastTimer) clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    toastEl.classList.remove('show');
-  }, 2500);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2500);
 }
 
 // ===== Init =====
 document.addEventListener('DOMContentLoaded', () => {
-  document.addEventListener('dblclick', (e) => {
-    e.preventDefault();
+  document.addEventListener('dblclick', e => e.preventDefault(), { passive: false });
+  document.addEventListener('touchmove', e => {
+    if (e.touches.length > 1) e.preventDefault();
   }, { passive: false });
 
-  document.addEventListener('touchmove', (e) => {
-    if (e.touches.length > 1) {
-      e.preventDefault();
-    }
-  }, { passive: false });
-
-  console.log('🚀 Web AR Demo — 3 GLB models ready');
+  console.log('🚀 Web AR — Three.js + AR.js ready');
   console.log('Models:', modelConfigs.map(m => m.name).join(', '));
 
-  // Auto-start AR if URL param autoscan=true
   const params = new URLSearchParams(window.location.search);
-  if (params.get('autoscan') === 'true') {
-    startAR();
-  }
+  if (params.get('autoscan') === 'true') startAR();
 });

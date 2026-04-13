@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -m http.server 8080)",
+      "Bash(curl -s http://localhost:8080)",
+      "Bash(open http://localhost:8080)",
+      "Bash(curl -sI \"https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/three.js/build/ar-threex.js\")",
+      "Bash(curl -sI \"https://cdn.jsdelivr.net/npm/three@0.154.0/examples/js/loaders/GLTFLoader.js\")",
+      "Bash(curl -sI \"https://raw.githack.com/AR-js-org/AR.js/3.4.5/data/data/camera_para.dat\")",
+      "Bash(curl -s \"https://cdn.jsdelivr.net/npm/three@0.154.0/\")",
+      "Bash(curl -sI \"https://unpkg.com/three@0.154.0/examples/js/loaders/GLTFLoader.js\")",
+      "Bash(curl -sI \"https://unpkg.com/three@0.154.0/examples/jsm/loaders/GLTFLoader.js\")",
+      "Bash(curl -sI \"https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/data/data/camera_para.dat\")",
+      "Bash(curl -sI \"https://cdn.jsdelivr.net/gh/AR-js-org/AR.js/data/data/camera_para.dat\")",
+      "Bash(curl -sI \"https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js\")",
+      "Bash(curl -sI \"https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/loaders/GLTFLoader.js\")",
+      "Bash(curl -sI \"https://cdn.jsdelivr.net/npm/three@0.150.0/examples/js/loaders/GLTFLoader.js\")",
+      "Bash(curl -sI \"https://cdn.jsdelivr.net/npm/three@0.148.0/examples/js/loaders/GLTFLoader.js\")",
+      "Bash(curl -sI \"https://cdn.jsdelivr.net/npm/three@0.150.0/examples/jsm/loaders/GLTFLoader.js\")",
+      "Bash(curl -sI \"https://unpkg.com/three@0.150.0/examples/jsm/loaders/GLTFLoader.js\")",
+      "Bash(curl -sI \"https://cdn.jsdelivr.net/npm/three-gltf-loader@1.111.0/index.js\")",
+      "Bash(curl -sI \"https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.3.3/three.js/build/ar-threex.js\")",
+      "Bash(curl -sI \"https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.3.3/data/data/camera_para.dat\")",
+      "Bash(curl -sI \"https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js\")",
+      "Bash(curl -s \"https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.3.3/three.js/build/\")",
+      "Bash(curl -sI \"https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.3.3/three.js/build/ar.js\")",
+      "Bash(curl -sI \"https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.0/three.js/build/ar-threex.js\")",
+      "Bash(curl -sI \"https://raw.githack.com/AR-js-org/AR.js/3.3.3/three.js/build/ar.js\")",
+      "Bash(curl -sI \"https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js\")",
+      "Bash(osascript -e ':*)",
+      "Bash(osascript -e 'tell application \"Safari\" to URL of current tab of front window')",
+      "WebFetch(domain:cdn.jsdelivr.net)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(curl -sI \"https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.3.3/data/data/patt.hiro\")",
+      "Bash(pkill -f \"python3 -m http.server 8080\")",
+      "Bash(lsof -ti:8080)",
+      "Bash(xargs kill:*)"
+    ]
+  }
+}
