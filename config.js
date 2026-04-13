@@ -6,7 +6,7 @@
 
 const APP_CONFIG = {
   // Số vòng loop animation trước khi hiện CTA button (default: 3)
-  ANIMATION_LOOP_COUNT: 8,
+  ANIMATION_LOOP_COUNT: 3,
   WEB_URL: 'https://web-ar-exam.web.app?autoscan=true',
   // Link CTA button redirect
   CTA_LINK: 'https://www.facebook.com/quyen.tanluong',
